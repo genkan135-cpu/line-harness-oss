@@ -165,13 +165,16 @@ async function processSingleDelivery(
 
   // Expand template variables ({{name}}, {{uid}}, {{auth_url:CHANNEL_ID}}, etc.)
   const expandedContent = expandVariables(currentStep.message_content, friend, workerUrl);
-  // Auto-wrap URLs with tracking links
+  // Auto-wrap URLs with tracking links (text with URLs → Flex with button)
+  let trackedType: string = currentStep.message_type;
   let trackedContent = expandedContent;
   if (workerUrl && liffUrl) {
     const { autoTrackContent } = await import('./auto-track.js');
-    trackedContent = await autoTrackContent(db, currentStep.message_type, expandedContent, workerUrl, liffUrl);
+    const tracked = await autoTrackContent(db, currentStep.message_type, expandedContent, workerUrl, liffUrl);
+    trackedType = tracked.messageType;
+    trackedContent = tracked.content;
   }
-  const message = buildMessage(currentStep.message_type, trackedContent);
+  const message = buildMessage(trackedType, trackedContent);
   await lineClient.pushMessage(friend.line_user_id, [message]);
 
   // Log outgoing message

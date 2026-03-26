@@ -1,4 +1,4 @@
-import { createTrackedLink, getTrackedLinks } from '@line-crm/db';
+import { createTrackedLink } from '@line-crm/db';
 
 const URL_REGEX = /https?:\/\/[^\s"'<>\])}]+/g;
 
@@ -14,31 +14,24 @@ function shouldSkip(url: string): boolean {
   return SKIP_PATTERNS.some((p) => p.test(url));
 }
 
-/**
- * Auto-wrap URLs in message content with tracking links.
- * Works with both text and flex (JSON string) content.
- */
-export async function autoTrackContent(
-  db: D1Database,
-  messageType: string,
-  content: string,
-  workerUrl: string,
-  liffUrl: string,
-): Promise<string> {
-  if (messageType === 'image') return content;
-
-  // Collect all unique URLs from the content
+/** Extract trackable URLs from content string */
+function extractUrls(content: string): Set<string> {
   const urls = new Set<string>();
-  const raw = messageType === 'flex' ? content : content;
-  for (const match of raw.matchAll(URL_REGEX)) {
-    const url = match[0].replace(/[.,;:!?)]+$/, ''); // trim trailing punctuation
+  for (const match of content.matchAll(URL_REGEX)) {
+    const url = match[0].replace(/[.,;:!?)]+$/, '');
     if (!shouldSkip(url)) urls.add(url);
   }
+  return urls;
+}
 
-  if (urls.size === 0) return content;
-
-  // Create tracking links for each unique URL
-  const urlMap = new Map<string, string>();
+/** Create tracking links and return a map of original → tracking URL */
+async function createTrackingMap(
+  db: D1Database,
+  urls: Set<string>,
+  workerUrl: string,
+  liffUrl: string,
+): Promise<Map<string, { trackingUrl: string; originalUrl: string; label: string }>> {
+  const urlMap = new Map<string, { trackingUrl: string; originalUrl: string; label: string }>();
   for (const url of urls) {
     const link = await createTrackedLink(db, {
       name: `auto: ${url.slice(0, 60)}`,
@@ -46,14 +39,106 @@ export async function autoTrackContent(
     });
     const directUrl = `${workerUrl}/t/${link.id}`;
     const trackingUrl = `${liffUrl}?redirect=${encodeURIComponent(directUrl)}`;
-    urlMap.set(url, trackingUrl);
+    // Generate a readable button label from the URL
+    const hostname = new URL(url).hostname.replace('www.', '');
+    const label = hostname.length > 20 ? hostname.slice(0, 20) + '…' : hostname;
+    urlMap.set(url, { trackingUrl, originalUrl: url, label });
+  }
+  return urlMap;
+}
+
+/** Build a Flex bubble from text + tracked URLs */
+function textToFlex(
+  text: string,
+  links: { trackingUrl: string; originalUrl: string; label: string }[],
+): string {
+  // Remove URLs from the text body
+  let cleanText = text;
+  for (const link of links) {
+    cleanText = cleanText.split(link.originalUrl).join('').trim();
+  }
+  // Clean up leftover whitespace/punctuation
+  cleanText = cleanText.replace(/\s{2,}/g, ' ').replace(/[👉🔗➡️]\s*$/g, '').trim();
+
+  const bodyContents: unknown[] = [];
+  if (cleanText) {
+    bodyContents.push({
+      type: 'text',
+      text: cleanText,
+      size: 'md',
+      color: '#333333',
+      wrap: true,
+    });
   }
 
-  // Replace URLs in content
+  const buttons = links.map((link) => ({
+    type: 'button',
+    action: {
+      type: 'uri',
+      label: `${link.label} を開く`,
+      uri: link.trackingUrl,
+    },
+    style: 'primary',
+    color: '#1a1a2e',
+    margin: 'sm',
+  }));
+
+  const bubble = {
+    type: 'bubble',
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      contents: bodyContents,
+      paddingAll: '16px',
+    },
+    footer: {
+      type: 'box',
+      layout: 'vertical',
+      contents: buttons,
+      paddingAll: '12px',
+    },
+  };
+
+  return JSON.stringify(bubble);
+}
+
+export interface AutoTrackResult {
+  messageType: string;
+  content: string;
+}
+
+/**
+ * Auto-wrap URLs in message content with tracking links.
+ * For text messages with URLs, converts to Flex with button.
+ * For flex messages, replaces URLs inline.
+ */
+export async function autoTrackContent(
+  db: D1Database,
+  messageType: string,
+  content: string,
+  workerUrl: string,
+  liffUrl: string,
+): Promise<AutoTrackResult> {
+  if (messageType === 'image') return { messageType, content };
+
+  const urls = extractUrls(content);
+  if (urls.size === 0) return { messageType, content };
+
+  const urlMap = await createTrackingMap(db, urls, workerUrl, liffUrl);
+
+  // Text messages → convert to Flex with buttons
+  if (messageType === 'text') {
+    const links = Array.from(urlMap.values());
+    return {
+      messageType: 'flex',
+      content: textToFlex(content, links),
+    };
+  }
+
+  // Flex messages → replace URLs inline in the JSON
   let result = content;
-  for (const [original, tracking] of urlMap) {
-    result = result.split(original).join(tracking);
+  for (const [original, { trackingUrl }] of urlMap) {
+    result = result.split(original).join(trackingUrl);
   }
-
-  return result;
+  return { messageType, content: result };
 }

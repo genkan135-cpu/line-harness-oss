@@ -27,13 +27,16 @@ export async function processBroadcastSend(
     throw new Error(`Broadcast ${broadcastId} not found`);
   }
 
-  // Auto-wrap URLs with tracking links
+  // Auto-wrap URLs with tracking links (text with URLs → Flex with button)
+  let finalType: string = broadcast.message_type;
   let finalContent = broadcast.message_content;
   if (workerUrl && liffUrl) {
     const { autoTrackContent } = await import('./auto-track.js');
-    finalContent = await autoTrackContent(db, broadcast.message_type, broadcast.message_content, workerUrl, liffUrl);
+    const tracked = await autoTrackContent(db, broadcast.message_type, broadcast.message_content, workerUrl, liffUrl);
+    finalType = tracked.messageType;
+    finalContent = tracked.content;
   }
-  const message = buildMessage(broadcast.message_type, finalContent);
+  const message = buildMessage(finalType, finalContent);
   let totalCount = 0;
   let successCount = 0;
 
