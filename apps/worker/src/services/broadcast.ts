@@ -1,3 +1,4 @@
+import { extractFlexAltText } from '../utils/flex-alt-text.js';
 import {
   getBroadcastById,
   getBroadcasts,
@@ -35,7 +36,8 @@ export async function processBroadcastSend(
     finalType = tracked.messageType;
     finalContent = tracked.content;
   }
-  const message = buildMessage(finalType, finalContent);
+  const altText = (broadcast as unknown as Record<string, unknown>).alt_text as string | undefined;
+  const message = buildMessage(finalType, finalContent, altText || undefined);
   let totalCount = 0;
   let successCount = 0;
 
@@ -133,7 +135,7 @@ export async function processScheduledBroadcasts(
   }
 }
 
-function buildMessage(messageType: string, messageContent: string): Message {
+function buildMessage(messageType: string, messageContent: string, altText?: string): Message {
   if (messageType === 'text') {
     return { type: 'text', text: messageContent };
   }
@@ -157,7 +159,7 @@ function buildMessage(messageType: string, messageContent: string): Message {
   if (messageType === 'flex') {
     try {
       const contents = JSON.parse(messageContent);
-      return { type: 'flex', altText: 'Message', contents };
+      return { type: 'flex', altText: altText || extractFlexAltText(contents), contents };
     } catch {
       return { type: 'text', text: messageContent };
     }

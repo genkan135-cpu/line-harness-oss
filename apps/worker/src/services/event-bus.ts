@@ -1,3 +1,5 @@
+import { extractFlexAltText } from '../utils/flex-alt-text.js';
+
 /**
  * イベントバス — システム内イベントの発火と処理
  *
@@ -233,7 +235,7 @@ async function executeAction(
       if (msgType === 'flex') {
         const contents = JSON.parse(action.params.content);
         await lineClient.pushMessage(friend.line_user_id, [
-          { type: 'flex', altText: action.params.altText || 'Message', contents },
+          { type: 'flex', altText: action.params.altText || extractFlexAltText(contents), contents },
         ]);
       } else {
         // Default: text message

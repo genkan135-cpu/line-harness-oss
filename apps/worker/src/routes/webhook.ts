@@ -99,18 +99,12 @@ async function handleEvent(
       console.error('Failed to get profile for', userId, err);
     }
 
-    let friend;
-    try {
-      friend = await upsertFriend(db, {
-        lineUserId: userId,
-        displayName: profile?.displayName ?? null,
-        pictureUrl: profile?.pictureUrl ?? null,
-        statusMessage: profile?.statusMessage ?? null,
-      });
-    } catch (err) {
-      console.error('Failed to upsert friend for', userId, err);
-      return;
-    }
+    const friend = await upsertFriend(db, {
+      lineUserId: userId,
+      displayName: profile?.displayName ?? null,
+      pictureUrl: profile?.pictureUrl ?? null,
+      statusMessage: profile?.statusMessage ?? null,
+    });
 
     // Set line_account_id for multi-account tracking
     if (lineAccountId) {

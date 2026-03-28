@@ -20,8 +20,14 @@ export function registerSendMessage(server: McpServer): void {
         .describe(
           "Message type: 'text' for plain text, 'flex' for Flex Message JSON",
         ),
+      altText: z
+        .string()
+        .optional()
+        .describe(
+          "Custom notification preview text for Flex Messages (shown on lock screen). If omitted, auto-extracted from Flex content.",
+        ),
     },
-    async ({ friendId, content, messageType }) => {
+    async ({ friendId, content, messageType, altText }) => {
       try {
         const client = getClient();
 
@@ -37,6 +43,7 @@ export function registerSendMessage(server: McpServer): void {
           friendId,
           trackedContent,
           messageType,
+          altText,
         );
         return {
           content: [

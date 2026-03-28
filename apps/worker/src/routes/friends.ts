@@ -292,6 +292,7 @@ friends.post('/api/friends/:id/messages', async (c) => {
     const body = await c.req.json<{
       messageType?: string;
       content: string;
+      altText?: string;
     }>();
 
     if (!body.content) {
@@ -322,7 +323,7 @@ friends.post('/api/friends/:id/messages', async (c) => {
       c.env.WORKER_URL || new URL(c.req.url).origin,
     );
 
-    const message = buildMessage(tracked.messageType, tracked.content);
+    const message = buildMessage(tracked.messageType, tracked.content, body.altText);
     await lineClient.pushMessage(friend.line_user_id, [message]);
 
     // Log outgoing message
