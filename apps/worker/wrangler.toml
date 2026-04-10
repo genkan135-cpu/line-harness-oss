@@ -18,9 +18,9 @@ binding = "DB"
 database_name = "line-harness"
 database_id = "1f4e2ad3-fc6d-426e-aa1c-b6cc031e7a0f"
 
-# [[r2_buckets]]
-# binding = "IMAGES"
-# bucket_name = "line-harness-images"
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "line-harness-images"
 
 [triggers]
 crons = ["*/5 * * * *"]
