@@ -343,10 +343,51 @@ forms.post('/api/forms/:id/submit', async (c) => {
         );
       }
 
-      // Add tag
+      // Add tag (single fixed tag from form config)
       if (form.on_submit_tag_id) {
         sideEffects.push(addTagToFriend(db, friendId, form.on_submit_tag_id));
       }
+
+      // Conditional tagging: match automations with event_type 'form_submitted'
+      // and field_match conditions against submission data
+      sideEffects.push(
+        (async () => {
+          try {
+            const automations = await db
+              .prepare(`SELECT * FROM automations WHERE event_type = 'form_submitted' AND is_active = 1`)
+              .all();
+            for (const auto of automations.results as Array<{
+              id: string; conditions: string; actions: string;
+            }>) {
+              const conds = JSON.parse(auto.conditions || '{}') as {
+                form_id?: string;
+                field_match?: Record<string, string>;
+              };
+              // Skip if form_id doesn't match
+              if (conds.form_id && conds.form_id !== formId) continue;
+              // Check field_match conditions
+              if (conds.field_match) {
+                const allMatch = Object.entries(conds.field_match).every(
+                  ([key, val]) => submissionData[key] === val,
+                );
+                if (!allMatch) continue;
+              }
+              // Execute actions
+              const actions = JSON.parse(auto.actions || '[]') as Array<{
+                type: string;
+                params: Record<string, string>;
+              }>;
+              for (const action of actions) {
+                if (action.type === 'add_tag' && action.params.tag_id) {
+                  await addTagToFriend(db, friendId!, action.params.tag_id);
+                }
+              }
+            }
+          } catch (e) {
+            console.error('Conditional tagging error:', e);
+          }
+        })(),
+      );
 
       // Enroll in scenario
       if (form.on_submit_scenario_id) {
